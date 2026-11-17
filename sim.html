@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador SLM -> Lente -> CCD (Bolduc LG & Petalas)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0; padding: 24px;
+      background: var(--bg); color: var(--text);
+    }
+    h1 { margin: 0 0 6px 0; font-size: 1.4rem; }
+    p.sub { margin: 0 0 20px 0; color: var(--muted); font-size: 0.92rem; }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .control-group { margin-bottom: 16px; }
+    .control-group label {
+      display: flex; justify-content: space-between;
+      font-size: 0.85rem; margin-bottom: 6px; color: var(--text);
+      font-weight: 500;
+    }
+    .control-group input[type="range"] {
+      width: 100%; accent-color: var(--accent); cursor: pointer;
+    }
+    .btn-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    button {
+      flex: 1; padding: 9px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: #0f172a;
+      color: var(--text); cursor: pointer; font-weight: 600; font-size: 0.82rem;
+      transition: all 0.15s;
+    }
+    button.active {
+      background: var(--accent); color: #0f172a; border-color: var(--accent);
+    }
+    button.dl-btn {
+      background: #10b981; color: #052e16; border-color: #10b981; margin-top: 8px; width: 100%;
+    }
+    .canvases {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+    }
+    @media (max-width: 680px) {
+      .canvases { grid-template-columns: 1fr; }
+    }
+    .canvas-box {
+      display: flex; flex-direction: column; align-items: center;
+      background: #090d16; padding: 14px; border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .canvas-box h3 { margin: 0 0 10px 0; font-size: 0.95rem; color: var(--accent); }
+    canvas {
+      width: 100%; max-width: 360px; aspect-ratio: 1/1;
+      border-radius: 6px; image-rendering: pixelated;
+      border: 1px solid #1e293b;
+    }
+    .metrics {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px;
+    }
+    .metric {
+      background: #090d16; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .metric span { display: block; font-size: 0.75rem; color: var(--muted); }
+    .metric strong { font-size: 1.05rem; color: var(--text); }
+  </style>
+</head>
+<body>
+  <div style="max-width:1280px;margin:0 auto;">
+    <h1>Simulador SLM &rarr; Lente &rarr; CCD (Bolduc et al.)</h1>
+    <p class="sub">Superposicao coerente de garfos opostos (+l e -l) para geracao de petalas no plano focal</p>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <div class="btn-row">
+        <button id="btnPetals" class="active" onclick="setMode(true)">Superposicao (+l e -l)</button>
+        <button id="btnRing" onclick="setMode(false)">Garfo Unico (Anel)</button>
+      </div>
+
+      <div class="control-group">
+        <label><span>Carga Topologica Principal (l1)</span><span id="valL1">1</span></label>
+        <input type="range" id="slL1" min="-6" max="6" step="1" value="1" oninput="syncSymmetric(); renderAll()" />
+      </div>
+
+      <div class="control-group" id="grpL2">
+        <label><span>Segunda Carga (l2)</span><span id="valL2">-1</span></label>
+        <input type="range" id="slL2" min="-6" max="6" step="1" value="-1" oninput="renderAll()" />
+      </div>
+
+      <div class="control-group">
+        <label><input type="checkbox" id="chkSym" checked onchange="syncSymmetric(); renderAll()" /> Manter simetrico (l2 = -l1)</label>
+      </div>
+
+      <div class="control-group" id="grpDelta">
+        <label><span>Fase Relativa &delta; (graus)</span><span id="valDelta">0&deg;</span></label>
+        <input type="range" id="slDelta" min="0" max="360" step="5" value="0" oninput="renderAll()" />
+      </div>
+
+      <div class="control-group">
+        <label><span>Cintura no SLM w_lg (mm)</span><span id="valWlg">1.00 mm</span></label>
+        <input type="range" id="slWlg" min="0.5" max="2.0" step="0.05" value="1.0" oninput="renderAll()" />
+      </div>
+
+      <div class="control-group">
+        <label><span>Periodo da Grade (pixels)</span><span id="valPer">24 px</span></label>
+        <input type="range" id="slPer" min="10" max="48" step="2" value="24" oninput="renderAll()" />
+      </div>
+
+      <div class="control-group">
+        <label><span>Exposicao do CCD</span><span id="valExp">0.80</span></label>
+        <input type="range" id="slExp" min="0.2" max="1.6" step="0.05" value="0.8" oninput="renderAll()" />
+      </div>
+
+      <div class="control-group">
+        <label><input type="checkbox" id="chkNoise" checked onchange="renderAll()" /> Ruido de Disparo + Leitura (12 bits)</label>
+      </div>
+
+      <button class="dl-btn" onclick="downloadFullMask()">Baixar Mascara 1920x1080 (.PNG)</button>
+    </div>
+
+    <div class="card">
+      <div class="canvases">
+        <div class="canvas-box">
+          <h3>Mascara no SLM (Zoom Central 256x256 px)</h3>
+          <canvas id="cvSLM" width="256" height="256"></canvas>
+        </div>
+        <div class="canvas-box">
+          <h3>CCD Simulado - 1a Ordem (ROI 256x256 px)</h3>
+          <canvas id="cvCCD" width="256" height="256"></canvas>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><span>Padrao de Saida</span><strong id="mPattern">2 Petalas</strong></div>
+        <div class="metric"><span>Centro 1a Ordem (u1)</span><strong id="mCenter">0.989 mm</strong></div>
+        <div class="metric"><span>Cintura Focal (wf)</span><strong id="mWf">60.4 &mu;m</strong></div>
+        <div class="metric"><span>Pico no CCD (12 bits)</span><strong id="mPeak">3276 ADU</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isPetals = true;
+    const wavelength = 633e-9;
+    const slm_pitch = 8e-6;
+    const f_lens = 0.300;
+    const cam_pitch = 5.2e-6;
+    const full_well = 20000.0;
+    const read_noise = 10.0;
+
+    // Precompute inverse sinc lookup table for Bolduc modulation depth M(A)
+    const LUT_N = 2000;
+    const sincLutX = new Float64Array(LUT_N + 1);
+    const sincLutY = new Float64Array(LUT_N + 1);
+    for (let i = 0; i <= LUT_N; i++) {
+      const x = i / LUT_N; // x = 1 - M in [0, 1]
+      sincLutX[i] = x;
+      sincLutY[i] = x === 0 ? 1.0 : Math.sin(Math.PI * x) / (Math.PI * x);
+    }
+
+    function modulationDepth(A) {
+      if (A <= 0) return 0.0;
+      if (A >= 1) return 1.0;
+      // Binary search in decreasing sincLutY
+      let lo = 0, hi = LUT_N;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (sincLutY[mid] >= A) lo = mid;
+        else hi = mid;
+      }
+      const y0 = sincLutY[lo], y1 = sincLutY[hi];
+      const t = (y0 === y1) ? 0 : (A - y0) / (y1 - y0);
+      const x = sincLutX[lo] + t * (sincLutX[hi] - sincLutX[lo]);
+      return 1.0 - x;
+    }
+
+    function lgRadial(r, l, w_lg) {
+      const lp = Math.abs(l);
+      if (lp === 0) return Math.exp(-(r * r) / (w_lg * w_lg));
+      const r_pk = w_lg * Math.sqrt(lp / 2.0);
+      return Math.pow(r / r_pk, lp) * Math.exp(-(r * r) / (w_lg * w_lg) + lp / 2.0);
+    }
+
+    // Inferno-like colormap for CCD
+    function infernoRGB(t) {
+      t = Math.max(0, Math.min(1, t));
+      const r = Math.min(255, Math.floor(255 * Math.pow(t, 0.55) * (t < 0.8 ? 1.1 : 1.0)));
+      const g = Math.min(255, Math.floor(255 * Math.pow(Math.max(0, t - 0.25) / 0.75, 1.3)));
+      const b = Math.min(255, Math.floor(255 * (t < 0.5 ? t * 1.4 : (t > 0.85 ? (t - 0.85) * 4.5 : (0.85 - t) * 1.6))));
+      return [r, g, Math.max(0, b)];
+    }
+
+    function setMode(petals) {
+      isPetals = petals;
+      document.getElementById('btnPetals').classList.toggle('active', petals);
+      document.getElementById('btnRing').classList.toggle('active', !petals);
+      document.getElementById('grpL2').style.opacity = petals ? '1' : '0.35';
+      document.getElementById('grpDelta').style.opacity = petals ? '1' : '0.35';
+      renderAll();
+    }
+
+    function syncSymmetric() {
+      if (document.getElementById('chkSym').checked) {
+        const l1 = parseInt(document.getElementById('slL1').value, 10);
+        document.getElementById('slL2').value = -l1;
+      }
+    }
+
+    function renderAll() {
+      const l1 = parseInt(document.getElementById('slL1').value, 10);
+      const l2 = parseInt(document.getElementById('slL2').value, 10);
+      const deltaDeg = parseFloat(document.getElementById('slDelta').value);
+      const w_lg = parseFloat(document.getElementById('slWlg').value) * 1e-3;
+      const period_px = parseFloat(document.getElementById('slPer').value);
+      const exposure = parseFloat(document.getElementById('slExp').value);
+      const addNoise = document.getElementById('chkNoise').checked;
+
+      document.getElementById('valL1').textContent = l1;
+      document.getElementById('valL2').textContent = l2;
+      document.getElementById('valDelta').innerHTML = deltaDeg + '&deg;';
+      document.getElementById('valWlg').textContent = (w_lg * 1e3).toFixed(2) + ' mm';
+      document.getElementById('valPer').textContent = period_px + ' px';
+      document.getElementById('valExp').textContent = exposure.toFixed(2);
+
+      const delta = deltaDeg * Math.PI / 180.0;
+      const N = 256;
+
+      // 1. Render SLM central 256x256 crop
+      const cvSLM = document.getElementById('cvSLM');
+      const ctxSLM = cvSLM.getContext('2d');
+      const imgSLM = ctxSLM.createImageData(N, N);
+
+      // Compute peak on radial grid for normalization
+      let maxAmp = 0;
+      const reArr = new Float64Array(N * N);
+      const imArr = new Float64Array(N * N);
+      for (let iy = 0; iy < N; iy++) {
+        const y = (iy - (N - 1) / 2.0) * slm_pitch;
+        for (let ix = 0; ix < N; ix++) {
+          const x = (ix - (N - 1) / 2.0) * slm_pitch;
+          const r = Math.hypot(x, y);
+          const th = Math.atan2(y, x);
+          const a1 = lgRadial(r, l1, w_lg);
+          let re = a1 * Math.cos(l1 * th);
+          let im = a1 * Math.sin(l1 * th);
+          if (isPetals) {
+            const a2 = lgRadial(r, l2, w_lg);
+            re += a2 * Math.cos(l2 * th + delta);
+            im += a2 * Math.sin(l2 * th + delta);
+          }
+          const amp = Math.hypot(re, im);
+          if (amp > maxAmp) maxAmp = amp;
+          const idx = iy * N + ix;
+          reArr[idx] = re;
+          imArr[idx] = im;
+        }
+      }
+      if (maxAmp === 0) maxAmp = 1;
+
+      for (let iy = 0; iy < N; iy++) {
+        for (let ix = 0; ix < N; ix++) {
+          const idx = iy * N + ix;
+          const x = (ix - (N - 1) / 2.0) * slm_pitch;
+          const A = Math.min(1.0, Math.hypot(reArr[idx], imArr[idx]) / maxAmp);
+          const phiField = Math.atan2(imArr[idx], reArr[idx]);
+          const M = modulationDepth(A);
+          const Phi = phiField + (2.0 * Math.PI * x) / (period_px * slm_pitch);
+          let saw = ((Phi + Math.PI) % (2.0 * Math.PI));
+          if (saw < 0) saw += 2.0 * Math.PI;
+          saw -= Math.PI;
+          const ph = M * saw + Math.PI;
+          const gray = Math.round((ph / (2.0 * Math.PI)) * 255);
+          const p = idx * 4;
+          imgSLM.data[p] = gray;
+          imgSLM.data[p + 1] = gray;
+          imgSLM.data[p + 2] = gray;
+          imgSLM.data[p + 3] = 255;
+        }
+      }
+      ctxSLM.putImageData(imgSLM, 0, 0);
+
+      // 2. Render Focal Plane CCD ROI (256x256 px around 1st order)
+      const cvCCD = document.getElementById('cvCCD');
+      const ctxCCD = cvCCD.getContext('2d');
+      const imgCCD = ctxCCD.createImageData(N, N);
+      const wf = (wavelength * f_lens) / (Math.PI * w_lg);
+      const Iarr = new Float64Array(N * N);
+      let maxI = 0;
+
+      for (let iy = 0; iy < N; iy++) {
+        const v = (iy - (N - 1) / 2.0) * cam_pitch;
+        for (let ix = 0; ix < N; ix++) {
+          const u = (ix - (N - 1) / 2.0) * cam_pitch;
+          const rho = Math.hypot(u, v);
+          const phi = Math.atan2(v, u);
+          // Far-field LG mode has (-i)^|l| Gouy phase factor
+          const a1 = lgRadial(rho, l1, wf);
+          const gouy1 = -Math.abs(l1) * Math.PI / 2.0;
+          let re = a1 * Math.cos(l1 * phi + gouy1);
+          let im = a1 * Math.sin(l1 * phi + gouy1);
+          if (isPetals) {
+            const a2 = lgRadial(rho, l2, wf);
+            const gouy2 = -Math.abs(l2) * Math.PI / 2.0;
+            re += a2 * Math.cos(l2 * phi + delta + gouy2);
+            im += a2 * Math.sin(l2 * phi + delta + gouy2);
+          }
+          const I = re * re + im * im;
+          if (I > maxI) maxI = I;
+          Iarr[iy * N + ix] = I;
+        }
+      }
+      if (maxI === 0) maxI = 1;
+
+      let maxCounts = 0;
+      for (let i = 0; i < N * N; i++) {
+        let e = (Iarr[i] / maxI) * exposure * full_well;
+        if (addNoise) {
+          // Gaussian approximation to Poisson + read noise
+          const u1 = Math.max(1e-9, Math.random());
+          const u2 = Math.random();
+          const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+          const sigma = Math.sqrt(Math.max(0, e) + read_noise * read_noise);
+          e += z * sigma;
+        }
+        e = Math.max(0, Math.min(full_well, e));
+        const counts = Math.round((e / full_well) * 4095);
+        if (counts > maxCounts) maxCounts = counts;
+        const [r, g, b] = infernoRGB(counts / 4095.0);
+        const p = i * 4;
+        imgCCD.data[p] = r;
+        imgCCD.data[p + 1] = g;
+        imgCCD.data[p + 2] = b;
+        imgCCD.data[p + 3] = 255;
+      }
+      ctxCCD.putImageData(imgCCD, 0, 0);
+
+      // Update metrics
+      const nPetals = isPetals ? Math.abs(l1 - l2) : 0;
+      document.getElementById('mPattern').textContent = isPetals
+        ? (nPetals === 0 ? 'Modo Unico (l1=l2)' : nPetals + ' Petalas')
+        : 'Anel Continuo';
+      const u1_mm = (wavelength * f_lens) / (period_px * slm_pitch) * 1e3;
+      document.getElementById('mCenter').textContent = u1_mm.toFixed(3) + ' mm';
+      document.getElementById('mWf').textContent = (wf * 1e6).toFixed(1) + ' \u03BCm';
+      document.getElementById('mPeak').textContent = maxCounts + (maxCounts >= 4095 ? ' ADU (SAT)' : ' ADU');
+    }
+
+    function downloadFullMask() {
+      const W = 1920, H = 1080;
+      const l1 = parseInt(document.getElementById('slL1').value, 10);
+      const l2 = parseInt(document.getElementById('slL2').value, 10);
+      const delta = parseFloat(document.getElementById('slDelta').value) * Math.PI / 180.0;
+      const w_lg = parseFloat(document.getElementById('slWlg').value) * 1e-3;
+      const period_px = parseFloat(document.getElementById('slPer').value);
+
+      const off = document.createElement('canvas');
+      off.width = W; off.height = H;
+      const ctx = off.getContext('2d');
+      const img = ctx.createImageData(W, H);
+
+      // Normalize peak
+      let maxAmp = isPetals ? 2.0 : 1.0;
+      for (let iy = 0; iy < H; iy++) {
+        const y = (iy - (H - 1) / 2.0) * slm_pitch;
+        for (let ix = 0; ix < W; ix++) {
+          const x = (ix - (W - 1) / 2.0) * slm_pitch;
+          const r = Math.hypot(x, y);
+          const th = Math.atan2(y, x);
+          const a1 = lgRadial(r, l1, w_lg);
+          let re = a1 * Math.cos(l1 * th);
+          let im = a1 * Math.sin(l1 * th);
+          if (isPetals) {
+            const a2 = lgRadial(r, l2, w_lg);
+            re += a2 * Math.cos(l2 * th + delta);
+            im += a2 * Math.sin(l2 * th + delta);
+          }
+          const A = Math.min(1.0, Math.hypot(re, im) / maxAmp);
+          const phiField = Math.atan2(im, re);
+          const M = modulationDepth(A);
+          const Phi = phiField + (2.0 * Math.PI * x) / (period_px * slm_pitch);
+          let saw = ((Phi + Math.PI) % (2.0 * Math.PI));
+          if (saw < 0) saw += 2.0 * Math.PI;
+          saw -= Math.PI;
+          const ph = M * saw + Math.PI;
+          const gray = Math.round((ph / (2.0 * Math.PI)) * 255);
+          const p = (iy * W + ix) * 4;
+          img.data[p] = gray;
+          img.data[p + 1] = gray;
+          img.data[p + 2] = gray;
+          img.data[p + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      const a = document.createElement('a');
+      a.download = isPetals ? `mascara_slm_petalas_l${l1}_l${l2}.png` : `mascara_slm_anel_l${l1}.png`;
+      a.href = off.toDataURL('image/png');
+      a.click();
+    }
+
+    renderAll();
+  </script>
+</body>
+</html>
